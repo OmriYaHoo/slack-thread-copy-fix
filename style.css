@@ -1,0 +1,27 @@
+.stcf-copy-btn {
+  /* Matches Slack's native action button styling */
+}
+.stcf-copy-btn:hover {
+  background: var(--sk_highlight, rgba(29, 28, 29, 0.08));
+  border-radius: 4px;
+}
+
+.stcf-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1d1c1d;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  z-index: 999999;
+  pointer-events: none;
+  animation: stcf-fade 1.5s ease-out forwards;
+}
+
+@keyframes stcf-fade {
+  0%, 70% { opacity: 1; }
+  100% { opacity: 0; }
+}
