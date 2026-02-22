@@ -1,6 +1,6 @@
-// Slack Thread Copy Fix v3
+// Slack Thread Copy Fix v4
 // Adds a "Copy text" button to message action toolbars
-// Converts Slack's custom DOM to clean HTML for proper rich-text copy
+// Converts Slack's custom DOM to clean Markdown for clipboard
 
 (function () {
   "use strict";
@@ -13,110 +13,125 @@
     setTimeout(() => toast.remove(), 1500);
   }
 
-  // Convert Slack's DOM into clean HTML that pastes well
-  function convertToCleanHtml(slackEl) {
+  // Convert a Slack DOM node tree into Markdown text
+  function convertToMarkdown(slackEl) {
     const clone = slackEl.cloneNode(true);
 
-    // Remove paragraph-break spacer spans (replace with actual line breaks)
-    clone.querySelectorAll(".c-mrkdwn__br").forEach((el) => {
-      el.replaceWith(document.createElement("br"));
-    });
+    // Remove reaction containers and timestamps that aren't message content
+    clone.querySelectorAll('[class*="reaction"]').forEach((el) => el.remove());
 
-    // Convert Slack code blocks: pre.p-rich_text_preformatted → <pre><code>
-    clone.querySelectorAll('[class*="rich_text_preformatted"]').forEach((el) => {
-      const pre = document.createElement("pre");
-      const code = document.createElement("code");
-      code.textContent = el.textContent;
-      pre.appendChild(code);
-      el.replaceWith(pre);
-    });
-
-    // Convert inline code: span/code with Slack classes
-    clone.querySelectorAll('[class*="c-mrkdwn__code"], [data-stringify-type="code"]').forEach((el) => {
-      const code = document.createElement("code");
-      code.textContent = el.textContent;
-      el.replaceWith(code);
-    });
-
-    // Convert Slack quote blocks
-    clone.querySelectorAll('[class*="rich_text_quote"]').forEach((el) => {
-      const bq = document.createElement("blockquote");
-      bq.innerHTML = el.innerHTML;
-      el.replaceWith(bq);
-    });
-
-    // Convert rich_text_section divs to paragraphs for better paste behavior
-    clone.querySelectorAll(".p-rich_text_section").forEach((el) => {
-      const p = document.createElement("p");
-      p.innerHTML = el.innerHTML;
-      el.replaceWith(p);
-    });
-
-    // Lists should already be <ol>/<ul>/<li> — keep them
-    // Bold <b>, italic <i>, strikethrough <s> — all standard, keep them
-
-    return clone.innerHTML;
+    return nodeToMarkdown(clone).trim();
   }
 
-  // Build a clean plain-text version that preserves structure
-  function convertToPlainText(slackEl) {
-    const clone = slackEl.cloneNode(true);
+  function nodeToMarkdown(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node.textContent;
+    }
 
-    // Add newlines for paragraph breaks
-    clone.querySelectorAll(".c-mrkdwn__br").forEach((el) => {
-      el.replaceWith("\n");
-    });
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return "";
+    }
 
-    // Add backticks around inline code
-    clone.querySelectorAll('[class*="c-mrkdwn__code"], [data-stringify-type="code"]').forEach((el) => {
-      el.textContent = "`" + el.textContent + "`";
-    });
+    const tag = node.tagName.toLowerCase();
+    const classes = node.className || "";
 
-    // Add triple backticks around code blocks
-    clone.querySelectorAll('[class*="rich_text_preformatted"]').forEach((el) => {
-      el.textContent = "```\n" + el.textContent + "\n```";
-    });
+    // Line break spacers
+    if (classes.includes && classes.includes("c-mrkdwn__br")) {
+      return "\n";
+    }
 
-    // Number ordered list items
-    clone.querySelectorAll("ol").forEach((ol) => {
-      ol.querySelectorAll(":scope > li").forEach((li, i) => {
-        li.textContent = (i + 1) + ". " + li.textContent;
-      });
-    });
+    // Code blocks
+    if (classes.includes && (classes.includes("rich_text_preformatted") || classes.includes("c-mrkdwn__pre"))) {
+      return "```\n" + node.textContent.trimEnd() + "\n```";
+    }
 
-    // Bullet unordered list items
-    clone.querySelectorAll("ul").forEach((ul) => {
-      ul.querySelectorAll(":scope > li").forEach((li) => {
-        li.textContent = "• " + li.textContent;
-      });
-    });
+    // Inline code
+    if (
+      (classes.includes && classes.includes("c-mrkdwn__code")) ||
+      node.getAttribute("data-stringify-type") === "code" ||
+      (tag === "code" && !node.closest("pre"))
+    ) {
+      return "`" + node.textContent + "`";
+    }
 
-    // Add > for quotes
-    clone.querySelectorAll('[class*="rich_text_quote"]').forEach((el) => {
-      el.textContent = el.textContent.split("\n").map((l) => "> " + l).join("\n");
-    });
+    // Quote blocks
+    if (classes.includes && classes.includes("rich_text_quote")) {
+      const inner = childrenToMarkdown(node);
+      return inner
+        .split("\n")
+        .map((l) => "> " + l)
+        .join("\n");
+    }
 
-    return clone.innerText;
+    // Bold
+    if (tag === "b" || tag === "strong") {
+      return "**" + childrenToMarkdown(node) + "**";
+    }
+
+    // Italic
+    if (tag === "i" || tag === "em") {
+      return "_" + childrenToMarkdown(node) + "_";
+    }
+
+    // Strikethrough
+    if (tag === "s" || tag === "strike" || tag === "del") {
+      return "~~" + childrenToMarkdown(node) + "~~";
+    }
+
+    // Links
+    if (tag === "a") {
+      const href = node.getAttribute("href") || "";
+      const text = childrenToMarkdown(node);
+      if (text === href || !href) return text;
+      return "[" + text + "](" + href + ")";
+    }
+
+    // Ordered lists
+    if (tag === "ol") {
+      const items = Array.from(node.querySelectorAll(":scope > li"));
+      return items.map((li, i) => (i + 1) + ". " + childrenToMarkdown(li)).join("\n");
+    }
+
+    // Unordered lists
+    if (tag === "ul") {
+      const items = Array.from(node.querySelectorAll(":scope > li"));
+      return items.map((li) => "- " + childrenToMarkdown(li)).join("\n");
+    }
+
+    // List items (when processed directly)
+    if (tag === "li") {
+      return childrenToMarkdown(node);
+    }
+
+    // Line breaks
+    if (tag === "br") {
+      return "\n";
+    }
+
+    // Paragraphs / sections — add spacing
+    if (tag === "p" || (classes.includes && classes.includes("p-rich_text_section"))) {
+      const inner = childrenToMarkdown(node);
+      return inner + "\n";
+    }
+
+    // Default: recurse into children
+    return childrenToMarkdown(node);
   }
 
-  function copyRichText(slackEl) {
-    const html = convertToCleanHtml(slackEl);
-    const text = convertToPlainText(slackEl);
+  function childrenToMarkdown(node) {
+    let result = "";
+    for (const child of node.childNodes) {
+      result += nodeToMarkdown(child);
+    }
+    return result;
+  }
 
-    const htmlBlob = new Blob([html], { type: "text/html" });
-    const textBlob = new Blob([text], { type: "text/plain" });
+  function copyMarkdown(slackEl) {
+    const markdown = convertToMarkdown(slackEl);
     navigator.clipboard
-      .write([
-        new ClipboardItem({
-          "text/html": htmlBlob,
-          "text/plain": textBlob,
-        }),
-      ])
+      .writeText(markdown)
       .then(() => showToast("Copied!"))
-      .catch(() => {
-        navigator.clipboard.writeText(text);
-        showToast("Copied (plain text)");
-      });
+      .catch(() => showToast("Copy failed"));
   }
 
   function getMessageBlock(messageEl) {
@@ -148,8 +163,13 @@
     btn.innerHTML = COPY_SVG;
 
     const tooltip = document.createElement("span");
+    tooltip.className = "stcf-tooltip";
+    tooltip.textContent = "Copy text";
+    tooltip.setAttribute("role", "tooltip");
+
+    btn.addEventListener("mouseenter", () => { tooltip.hidden = false; });
+    btn.addEventListener("mouseleave", () => { tooltip.hidden = true; });
     tooltip.hidden = true;
-    tooltip.setAttribute("data-sk", "tooltip");
 
     btn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -158,13 +178,13 @@
       if (!messageEl) return;
       const block = getMessageBlock(messageEl);
       if (block) {
-        copyRichText(block);
+        copyMarkdown(block);
       }
     });
 
     if (moreBtn) {
+      actionsGroup.insertBefore(btn, moreBtn);
       actionsGroup.insertBefore(tooltip, moreBtn);
-      actionsGroup.insertBefore(btn, tooltip);
     } else {
       actionsGroup.appendChild(btn);
       actionsGroup.appendChild(tooltip);
