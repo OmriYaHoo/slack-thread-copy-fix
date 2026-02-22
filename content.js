@@ -1,4 +1,4 @@
-// Slack Thread Copy Fix v4
+// Slack Thread Copy Fix v5
 // Adds a "Copy text" button to message action toolbars
 // Converts Slack's custom DOM to clean Markdown for clipboard
 
@@ -11,6 +11,21 @@
     toast.textContent = msg;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 1500);
+  }
+
+  // Extract unicode emoji from Slack emoji img src URL
+  // URLs look like: .../14.0/google-small/1f504@2x.png
+  function emojiFromSrc(src) {
+    try {
+      const match = src.match(/\/([0-9a-f-]+)@2x\.png/i);
+      if (match) {
+        return match[1]
+          .split("-")
+          .map((cp) => String.fromCodePoint(parseInt(cp, 16)))
+          .join("");
+      }
+    } catch (e) {}
+    return null;
   }
 
   // Convert a Slack DOM node tree into Markdown text
@@ -33,21 +48,36 @@
     }
 
     const tag = node.tagName.toLowerCase();
-    const classes = node.className || "";
+    const classes = (typeof node.className === "string" ? node.className : "") || "";
+
+    // Emoji images
+    if (tag === "img" && node.getAttribute("data-stringify-type") === "emoji") {
+      // Try to get unicode from src URL
+      const emoji = emojiFromSrc(node.src);
+      if (emoji) return emoji;
+      // Fallback to :name: format
+      const name = node.getAttribute("data-stringify-emoji") || node.alt || "";
+      return name.startsWith(":") ? name : ":" + name + ":";
+    }
+
+    // Skip non-emoji images entirely
+    if (tag === "img") {
+      return "";
+    }
 
     // Line break spacers
-    if (classes.includes && classes.includes("c-mrkdwn__br")) {
+    if (classes.includes("c-mrkdwn__br")) {
       return "\n";
     }
 
     // Code blocks
-    if (classes.includes && (classes.includes("rich_text_preformatted") || classes.includes("c-mrkdwn__pre"))) {
+    if (classes.includes("rich_text_preformatted") || classes.includes("c-mrkdwn__pre")) {
       return "```\n" + node.textContent.trimEnd() + "\n```";
     }
 
     // Inline code
     if (
-      (classes.includes && classes.includes("c-mrkdwn__code")) ||
+      classes.includes("c-mrkdwn__code") ||
       node.getAttribute("data-stringify-type") === "code" ||
       (tag === "code" && !node.closest("pre"))
     ) {
@@ -55,7 +85,7 @@
     }
 
     // Quote blocks
-    if (classes.includes && classes.includes("rich_text_quote")) {
+    if (classes.includes("rich_text_quote")) {
       const inner = childrenToMarkdown(node);
       return inner
         .split("\n")
@@ -109,7 +139,7 @@
     }
 
     // Paragraphs / sections — add spacing
-    if (tag === "p" || (classes.includes && classes.includes("p-rich_text_section"))) {
+    if (tag === "p" || classes.includes("p-rich_text_section")) {
       const inner = childrenToMarkdown(node);
       return inner + "\n";
     }
@@ -162,14 +192,10 @@
     btn.setAttribute("type", "button");
     btn.innerHTML = COPY_SVG;
 
+    // Use Slack's native tooltip system
     const tooltip = document.createElement("span");
-    tooltip.className = "stcf-tooltip";
-    tooltip.textContent = "Copy text";
-    tooltip.setAttribute("role", "tooltip");
-
-    btn.addEventListener("mouseenter", () => { tooltip.hidden = false; });
-    btn.addEventListener("mouseleave", () => { tooltip.hidden = true; });
     tooltip.hidden = true;
+    tooltip.setAttribute("data-sk", "tooltip");
 
     btn.addEventListener("click", (e) => {
       e.preventDefault();
