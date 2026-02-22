@@ -184,6 +184,10 @@
 
     const moreBtn = actionsGroup.querySelector('[data-qa="more_message_actions"]');
 
+    // Wrapper for positioning the tooltip relative to the button
+    const wrapper = document.createElement("span");
+    wrapper.className = "stcf-btn-wrapper";
+
     const btn = document.createElement("button");
     btn.className =
       "stcf-copy-btn c-button-unstyled c-icon_button c-icon_button--size_small c-message_actions__button c-icon_button--default";
@@ -192,10 +196,15 @@
     btn.setAttribute("type", "button");
     btn.innerHTML = COPY_SVG;
 
-    // Use Slack's native tooltip system
-    const tooltip = document.createElement("span");
-    tooltip.hidden = true;
-    tooltip.setAttribute("data-sk", "tooltip");
+    const tooltip = document.createElement("div");
+    tooltip.className = "stcf-tooltip";
+    tooltip.textContent = "Copy text";
+
+    wrapper.appendChild(btn);
+    wrapper.appendChild(tooltip);
+
+    btn.addEventListener("mouseenter", () => { tooltip.classList.add("stcf-tooltip--visible"); });
+    btn.addEventListener("mouseleave", () => { tooltip.classList.remove("stcf-tooltip--visible"); });
 
     btn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -209,11 +218,9 @@
     });
 
     if (moreBtn) {
-      actionsGroup.insertBefore(btn, moreBtn);
-      actionsGroup.insertBefore(tooltip, moreBtn);
+      actionsGroup.insertBefore(wrapper, moreBtn);
     } else {
-      actionsGroup.appendChild(btn);
-      actionsGroup.appendChild(tooltip);
+      actionsGroup.appendChild(wrapper);
     }
   }
 

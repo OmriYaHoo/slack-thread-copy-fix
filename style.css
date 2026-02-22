@@ -1,9 +1,48 @@
-.stcf-copy-btn {
-  /* Matches Slack's native action button styling */
+.stcf-btn-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
 }
+
 .stcf-copy-btn:hover {
   background: var(--sk_highlight, rgba(29, 28, 29, 0.08));
   border-radius: 4px;
+}
+
+.stcf-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--sk_primary_foreground, #1d1c1d);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 999999;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 80ms ease-in, visibility 80ms ease-in;
+}
+
+.stcf-tooltip--visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Small arrow pointing down */
+.stcf-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 4px solid transparent;
+  border-top-color: var(--sk_primary_foreground, #1d1c1d);
 }
 
 .stcf-toast {
